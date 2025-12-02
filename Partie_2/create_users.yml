@@ -1,0 +1,124 @@
+---
+- name: TP1 - Automatisation création utilisateurs et notifications
+  hosts: all
+  become: yes
+  vars:
+    users_file: "./users.txt"
+    student_group: "students-inf-361"
+    # Calcul dynamique de 20% de la RAM en KB pour limits.conf
+    ram_limit_kb: "{{ (ansible_memtotal_mb * 1024 * 0.2) | int }}"
+    ssh_port: 2222 # Doit correspondre à votre config SSH
+
+  tasks:
+    - name: "Lecture du fichier users.txt"
+      community.general.read_csv:
+        path: "{{ users_file }}"
+        delimiter: ';'
+        fieldnames: [username, password, fullname, phone, email, shell]
+      register: users_list
+      delegate_to: localhost
+
+    - name: "Création du groupe étudiant {{ student_group }}"
+      ansible.builtin.group:
+        name: "{{ student_group }}"
+        state: present
+
+    - name: "Vérification et installation des shells manquants"
+      ansible.builtin.package:
+        name: "{{ item.shell | basename }}" # Extrait 'zsh' de '/bin/zsh'
+        state: present
+      loop: "{{ users_list.list }}"
+      ignore_errors: yes # Si le nom du paquet diffère du binaire, on ignore pour ce TP
+
+    - name: "Création des utilisateurs"
+      ansible.builtin.user:
+        name: "{{ item.username }}"
+        comment: "{{ item.fullname }}"
+        shell: "{{ item.shell }}"
+        password: "{{ item.password | password_hash('sha512') }}"
+        groups: "{{ student_group }},sudo"
+        append: yes
+        state: present
+        update_password: on_create
+      loop: "{{ users_list.list }}"
+      register: users_created
+
+    - name: "Forcer le changement de mot de passe à la première connexion"
+      ansible.builtin.shell: "chage -d 0 {{ item.username }}"
+      loop: "{{ users_list.list }}"
+      when: users_created.changed
+
+    - name: "Configuration du message de bienvenue (WELCOME.txt)"
+      ansible.builtin.copy:
+        dest: "/home/{{ item.username }}/WELCOME.txt"
+        content: |
+          Bienvenue sur le serveur de TP INF 361 !
+          Merci de respecter les règles de sécurité.
+        owner: "{{ item.username }}"
+        group: "{{ item.username }}"
+      loop: "{{ users_list.list }}"
+
+    - name: "Affichage automatique du message dans .bashrc"
+      ansible.builtin.lineinfile:
+        path: "/home/{{ item.username }}/.bashrc"
+        line: "cat ~/WELCOME.txt"
+        create: yes
+      loop: "{{ users_list.list }}"
+
+    - name: "Restriction de la commande su pour le groupe étudiant"
+      # Note: Cette méthode modifie les droits du binaire. 
+      # Une alternative PAM (pam_wheel) est possible mais plus complexe.
+      ansible.builtin.file:
+        path: /bin/su
+        mode: '4750'
+        group: sudo # Seul root et sudo peuvent l'exécuter
+
+    - name: "Limitation Espace Disque (Quota 15Go) - Simulation via limits"
+      # Les quotas disques nécessitent une partition montée avec l'option quota.
+      # Ici on utilise limits.conf pour la taille max des fichiers (fsize) comme approximation pédagogique
+      ansible.builtin.lineinfile:
+        path: /etc/security/limits.conf
+        line: "{{ item.username }} hard fsize 15728640" # 15 Go en KB
+      loop: "{{ users_list.list }}"
+
+    - name: "Limitation Mémoire (20% RAM)"
+      ansible.builtin.lineinfile:
+        path: /etc/security/limits.conf
+        line: "{{ item.username }} hard as {{ ram_limit_kb }}" # Address Space limit
+      loop: "{{ users_list.list }}"
+
+    - name: "Envoi de l'email de bienvenue"
+      community.general.mail:
+        host: localhost # Ou votre serveur SMTP
+        port: 25
+        to: "{{ item.email }}"
+        subject: "Vos identifiants d'accès VPS - INF 361"
+        body: |
+          Bonjour {{ item.fullname }},
+
+          Votre compte a été créé avec succès sur le serveur de TP.
+
+          Informations de connexion :
+          ---------------------------
+          Adresse IP : {{ ansible_default_ipv4.address }}
+          Port SSH   : {{ ssh_port }}
+          Utilisateur: {{ item.username }}
+          Mot de passe : {{ item.password }}
+
+          Commande de connexion :
+          ssh -p {{ ssh_port }} {{ item.username }}@{{ ansible_default_ipv4.address }}
+
+          Pour transmettre votre clé publique (Linux/Mac/Windows PowerShell) :
+          ssh-copy-id -p {{ ssh_port }} {{ item.username }}@{{ ansible_default_ipv4.address }}
+
+          Cordialement,
+          L'Admin Système.
+      loop: "{{ users_list.list }}"
+      ignore_errors: yes # Pour éviter que le playbook plante si pas de SMTP configuré
+
+    - name: "Logging de l'exécution"
+      ansible.builtin.lineinfile:
+        path: /var/log/create_users_ansible.log
+        create: yes
+        line: "{{ ansible_date_time.iso8601 }} - Utilisateur {{ item.username }} traité."
+      loop: "{{ users_list.list }}"

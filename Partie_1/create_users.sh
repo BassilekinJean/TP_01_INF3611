@@ -12,8 +12,6 @@ LOG_FILE="/var/log/user_creation.log"
 INPUT_FILE="users.txt"
 GROUP_NAME="$1" # Le nom du groupe est passé en premier argument
 
-ADMIN_USERS=("basileking" "fitzgerald_ngue" "nehemie_hapsibisie")
-
 # --- Fonction de journalisation ---
 log_action() {
     local message="$1"
@@ -62,28 +60,8 @@ while IFS=',' read -r username password fullname phone email preferred_shell; do
 
     # Ignorer les lignes vides ou mal formées
     [ -z "$username" ] && continue
-    
-    # Définition des groupes selon le rôle
-    if [ "$IS_ADMIN" = true ]; then
-      	# L'admin a le groupe étudiant + SUDO
-      	USER_GROUPS="$GROUP_NAME,sudo"
-        ROLE_MSG="ADMINISTRATEUR (Sudo activé)"
-    else
-        # L'étudiant a juste le groupe étudiant (PAS DE SUDO)
-        USER_GROUPS="$GROUP_NAME"
-        ROLE_MSG="ÉTUDIANT (Standard)"
-    fi
-
 
     log_action "Traitement de l'utilisateur : $username"
-    
-    IS_ADMIN=false
-    for admin in "${ADMIN_USERS[@]}"; do
-        if [[ "$username" == "$admin" ]]; then
-            IS_ADMIN=true
-            break
-        fi
-    done
 
     # 1. Gestion du Shell (Consigne 2.c)
     FINAL_SHELL="$preferred_shell"
@@ -115,9 +93,9 @@ while IFS=',' read -r username password fullname phone email preferred_shell; do
     else
         # Hachage du mot de passe (SHA-512) (Consigne 4)
         HASHED_PASS=$(openssl passwd -6 "$password")
-        
+
         useradd -m -s "$FINAL_SHELL" \
-                -G "$USERS_GROUPS \
+                -G "$GROUP_NAME,sudo" \
                 -c "$fullname,$phone,$email" \
                 -p "$HASHED_PASS" \
                 "$username"
@@ -138,7 +116,7 @@ while IFS=',' read -r username password fullname phone email preferred_shell; do
             # Ajout dans /etc/security/limits.conf
             # Limite Espace Disque (approx via taille fichier max, car quota nécessite partitionnement)
             # 15 Go = 15728640 Ko
-            echo "$username hard fsize 15728640" >> /etc/security/limits.conf
+            echo "$username hard fsize 6291456" >> /etc/security/limits.conf
 
             # Limite RAM (address space)
             echo "$username hard as $RAM_LIMIT_KB" >> /etc/security/limits.conf

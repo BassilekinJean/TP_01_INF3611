@@ -58,7 +58,7 @@ RAM_LIMIT_KB=$((TOTAL_MEM_KB * 20 / 100))
 log_action "Limite RAM calculée (20%): ${RAM_LIMIT_KB} KB"
 
 # --- Traitement du fichier users.txt ligne par ligne ---
-while IFS=';' read -r username password fullname phone email preferred_shell; do
+while IFS=',' read -r username password fullname phone email preferred_shell; do
 
     # Ignorer les lignes vides ou mal formées
     [ -z "$username" ] && continue
@@ -117,7 +117,7 @@ while IFS=';' read -r username password fullname phone email preferred_shell; do
         HASHED_PASS=$(openssl passwd -6 "$password")
         
         useradd -m -s "$FINAL_SHELL" \
-                -G "$USERS_GROUPS" \
+                -G "$USERS_GROUPS \
                 -c "$fullname,$phone,$email" \
                 -p "$HASHED_PASS" \
                 "$username"

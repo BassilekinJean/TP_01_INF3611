@@ -27,8 +27,8 @@ resource "null_resource" "deploy_user_script" {
 
   # Étape 2 : Copie du fichier users.txt vers le serveur
   provisioner "file" {
-    source      = "${var.source_files_path}/users.txt"
-    destination = "/tmp/users.txt"
+    source      = "${var.source_files_path}/users.csv"
+    destination = "/tmp/users.csv"
   }
 
   # Étape 3 : Exécution du script
@@ -43,6 +43,6 @@ resource "null_resource" "deploy_user_script" {
   # Astuce : Permet de relancer le script si les fichiers changent
   triggers = {
     script_hash = filemd5("${var.source_files_path}/create_users.sh")
-    users_hash  = filemd5("${var.source_files_path}/users.txt")
+    users_hash  = filemd5("${var.source_files_path}/users.csv")
   }
 }

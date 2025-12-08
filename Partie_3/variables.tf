@@ -24,5 +24,5 @@ variable "student_group_name" {
 variable "source_files_path" {
   description = "Chemin vers le dossier contenant le script et le fichier users (Partie 1)"
   type        = string
-  default     = "../Partie_1" # Suppose que ton dossier Partie_3 est à côté de Partie_1
+  default     = "./"
 }

@@ -7,16 +7,17 @@
     student_group: "students-inf-361"
     # Calcul dynamique de 20% de la RAM en KB pour limits.conf
     ram_limit_kb: "{{ (ansible_memtotal_mb * 1024 * 0.2) | int }}"
-    ssh_port: 2222 # Doit correspondre à votre config SSH
+    ssh_port: 22 # Doit correspondre à votre config SSH
 
   tasks:
-    - name: "Lecture du fichier users.txt"
+    - name: "Lecture du fichier users.csv"
       community.general.read_csv:
         path: "{{ users_file }}"
-        delimiter: ';'
+        delimiter: ','
         fieldnames: [username, password, fullname, phone, email, shell]
       register: users_list
       delegate_to: localhost
+      become: no
 
     - name: "Création du groupe étudiant {{ student_group }}"
       ansible.builtin.group:
@@ -28,7 +29,7 @@
         name: "{{ item.shell | basename }}" # Extrait 'zsh' de '/bin/zsh'
         state: present
       loop: "{{ users_list.list }}"
-      ignore_errors: yes # Si le nom du paquet diffère du binaire, on ignore pour ce TP
+      ignore_errors: yes # Si le nom du paquet diffère du binaire
 
     - name: "Création des utilisateurs"
       ansible.builtin.user:
@@ -46,7 +47,9 @@
     - name: "Forcer le changement de mot de passe à la première connexion"
       ansible.builtin.shell: "chage -d 0 {{ item.username }}"
       loop: "{{ users_list.list }}"
-      when: users_created.changed
+      loop_control:
+        index_var: idx
+      when: users_created.results[idx].changed
 
     - name: "Configuration du message de bienvenue (WELCOME.txt)"
       ansible.builtin.copy:
@@ -57,6 +60,9 @@
         owner: "{{ item.username }}"
         group: "{{ item.username }}"
       loop: "{{ users_list.list }}"
+      loop_control:
+        index_var: idx
+      when: users_created.results[idx].changed
 
     - name: "Affichage automatique du message dans .bashrc"
       ansible.builtin.lineinfile:
@@ -64,6 +70,9 @@
         line: "cat ~/WELCOME.txt"
         create: yes
       loop: "{{ users_list.list }}"
+      loop_control:
+        index_var: idx
+      when: users_created.results[idx].changed
 
     - name: "Restriction de la commande su pour le groupe étudiant"
       # Note: Cette méthode modifie les droits du binaire. 
@@ -78,12 +87,14 @@
       # Ici on utilise limits.conf pour la taille max des fichiers (fsize) comme approximation pédagogique
       ansible.builtin.lineinfile:
         path: /etc/security/limits.conf
+        regexp: "^{{ item.username }} hard fsize"
         line: "{{ item.username }} hard fsize 15728640" # 15 Go en KB
       loop: "{{ users_list.list }}"
 
     - name: "Limitation Mémoire (20% RAM)"
       ansible.builtin.lineinfile:
         path: /etc/security/limits.conf
+        regexp: "^{{ item.username }} hard as"
         line: "{{ item.username }} hard as {{ ram_limit_kb }}" # Address Space limit
       loop: "{{ users_list.list }}"
 
@@ -96,7 +107,7 @@
         body: |
           Bonjour {{ item.fullname }},
 
-          Votre compte a été créé avec succès sur le serveur de TP.
+          Votre compte a été créé avec succès sur le serveur de TP INF361.
 
           Informations de connexion :
           ---------------------------
@@ -114,6 +125,9 @@
           Cordialement,
           L'Admin Système.
       loop: "{{ users_list.list }}"
+      loop_control:
+        index_var: idx
+      when: users_created.results[idx].changed
       ignore_errors: yes # Pour éviter que le playbook plante si pas de SMTP configuré
 
     - name: "Logging de l'exécution"
@@ -122,3 +136,6 @@
         create: yes
         line: "{{ ansible_date_time.iso8601 }} - Utilisateur {{ item.username }} traité."
       loop: "{{ users_list.list }}"
+      loop_control:
+        index_var: idx
+      when: users_created.results[idx].changed

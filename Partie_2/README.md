@@ -35,10 +35,22 @@ Ce répertoire contient le Playbook Ansible permettant d'automatiser la configur
 ## Prérequis Techniques
 L'exécution de ce playbook nécessite :
 * Ansible installé sur le nœud de contrôle.
+  ```bash
+  sudo apt update
+  sudo apt install ansible -y
+  ```
 * La collection `community.general` (pour les modules `read_csv` et `mail`).
+  ```bash
+  ansible-galaxy collection install community.general
+  ```
 * La librairie Python `passlib` (pour le hachage des mots de passe).
+  ```bash
+  pip3 install passlib
+  ```
 * Un serveur SMTP configuré sur la machine cible (ex: Postfix) pour l'envoi réel des emails.
-
+  ```bash
+  sudo apt install postfix -y
+  ```
 ## Exécution
 Lancer la commande suivante à la racine du dossier :
 ```bash
